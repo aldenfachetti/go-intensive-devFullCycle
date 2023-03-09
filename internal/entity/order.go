@@ -15,6 +15,7 @@ func NewOrder(id string, price float64, tax float64) (*Order, error) {
 		Price: price,
 		Tax: tax,
 	}
+
 	err := order.Validate()
 	if err != nil {
 		return nil, err
@@ -35,4 +36,12 @@ func (o *Order) Validate() error {
 	return nil
 }
 
+func (o *Order) CalculateFinalPrice() error {
+	o.FinalPrice = o.Price + o.Tax
 
+	err := o.Validate()
+	if err != nil {
+		return err
+	}
+	return nil
+}
