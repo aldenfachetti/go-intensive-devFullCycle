@@ -7,9 +7,13 @@ import (
 
 	"github.com/aldenfachetti/go-intensive-devFullCycle/internal/infra/database"
 	"github.com/aldenfachetti/go-intensive-devFullCycle/internal/usecase"
-	ckafka "github.com/confluentinc/confluent-kafka-go/kafka"
-
 	"github.com/aldenfachetti/go-intensive-devFullCycle/pkg/kafka"
+	"github.com/aldenfachetti/go-intensive-devFullCycle/pkg/rabbitmq"
+	ckafka "github.com/confluentinc/confluent-kafka-go/kafka"
+	amqp "github.com/rabbitmq/amqp091-go"
+
+	// SQLITE3 DRIVER
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
@@ -17,7 +21,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer db.Close() // run everything and then run close
+	defer db.Close() // executa tudo e depois executa o close
 
 	repository := database.NewOrderRepository(db)
 	usecase := usecase.CalculateFinalPrice{OrderRepository: repository}
@@ -25,23 +29,49 @@ func main() {
 	msgChanKafka := make(chan *ckafka.Message)
 	topics := []string{"orders"}
 	servers := "host.docker.internal:9094"
+	fmt.Println("Kafka consumer has started")
 	go kafka.Consume(topics, servers, msgChanKafka)
-	kafkaworker(msgChanKafka, usecase)
+	go kafkaWorker(msgChanKafka, usecase)
+
+	ch, err := rabbitmq.OpenChannel()
+	if err != nil {
+		panic(err)
+	}
+	defer ch.Close()
+	msgRabbitmqChannel := make(chan amqp.Delivery)
+	go rabbitmq.Consume(ch, msgRabbitmqChannel)
+	rabbitmqWorker(msgRabbitmqChannel, usecase)
 }
 
-func kafkaworker(msgChan chan *ckafka.Message, uc usecase.CalculateFinalPrice) {
+func kafkaWorker(msgChan chan *ckafka.Message, uc usecase.CalculateFinalPrice) {
+	fmt.Println("Kafka worker has started")
 	for msg := range msgChan {
 		var OrderInputDTO usecase.OrderInputDTO
 		err := json.Unmarshal(msg.Value, &OrderInputDTO)
 		if err != nil {
 			panic(err)
 		}
-
-		outputDTO, err := uc.Execute(OrderInputDTO)
+		outputDto, err := uc.Execute(OrderInputDTO)
 		if err != nil {
 			panic(err)
 		}
+		fmt.Printf("Kafka has processed order %s\n", outputDto.ID)
+	}
+}
 
-		fmt.Printf("Kafka has processed order %s\n", outputDTO.ID)
+func rabbitmqWorker(msgChan chan amqp.Delivery, uc usecase.CalculateFinalPrice) {
+	fmt.Println("Rabbitmq worker has started")
+	for msg := range msgChan {
+		var OrderInputDTO usecase.OrderInputDTO
+		err := json.Unmarshal(msg.Body, &OrderInputDTO)
+		if err != nil {
+			panic(err)
+		}
+		outputDto, err := uc.Execute(OrderInputDTO)
+		if err != nil {
+			panic(err)
+		}
+		msg.Ack(false)
+		fmt.Printf("Rabbitmq has processed order %s\n", outputDto.ID)
 	}
 }
