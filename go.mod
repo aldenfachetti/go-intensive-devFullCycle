@@ -1,4 +1,4 @@
-module github.com/devfullcycle/gointensive
+module github.com/aldenfachetti/go-intensive-devFullCycle
 
 go 1.20
 

@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/confluentinc/confluent-kafka-go/kafka"
-	"github.com/devfullcycle/gointensive/internal/infra/database"
-	"github.com/devfullcycle/gointensive/internal/usecase"
-	"github.com/devfullcycle/gointensive/pkg/kafka"
+	"github.com/aldenfachetti/go-intensive-devFullCycle/internal/infra/database"
+	"github.com/aldenfachetti/go-intensive-devFullCycle/internal/usecase"
+	ckafka "github.com/confluentinc/confluent-kafka-go/kafka"
+
+	"github.com/aldenfachetti/go-intensive-devFullCycle/pkg/kafka"
 )
 
 func main() {
@@ -16,13 +17,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
 	defer db.Close() // run everything and then run close
 
 	repository := database.NewOrderRepository(db)
 	usecase := usecase.CalculateFinalPrice{OrderRepository: repository}
-	msgChanKafka := make(chan *ckafka.Message)
 
+	msgChanKafka := make(chan *ckafka.Message)
 	topics := []string{"orders"}
 	servers := "host.docker.internal:9094"
 	go kafka.Consume(topics, servers, msgChanKafka)
